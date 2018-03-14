@@ -37,6 +37,16 @@
 #define PIN_LED_YELLOW 3
 #define PIN_LED_GREEN 4
 
+enum class Mode : short {nothing, allOn, allOff,
+                         toggleAll, toggleRed, toggleYellow, toggleGreen, toggleRandom,
+                         blinkAll, blinkRed, blinkYellow, blinkGreen, blinkRedUserdefined, blinkYellowUserdefined, blinkGreenUserdefined, blinkRedGreenAlternating, blinkRandom,
+                         greenToRed, redToGreen,
+                         lightsRunningFromTop, lightsRunningFromBottom, randomLightMode,
+                         autoTrafficLightPhases,
+                         specialIncreaseSpeed = 300, specialDecreaseSpeed,
+                         specialGotoPreviousMode, specialGotoNextMode
+                        };
+
 
 //int RECV_PIN = 11;  /*  Der Kontakt der am Infrarotsensor die Daten ausgibt, wird mit Pin 11 des Arduinoboards verbunden. */
 
@@ -865,6 +875,103 @@ bool isWaiting() {
 }
 
 /* Converts IR received codes to number to be used in launchMode */
+Mode remoteCodeToMode2(unsigned long remoteValue) {
+  switch (remoteValue) {
+    case 4278227565:
+      /* Button power */
+      return Mode::toggleAll;
+    case 4278243885:
+      /* Button mute */
+      return Mode::allOff;
+    case 4278225015:
+      /* Button rot */
+      return Mode::toggleRed;
+    case 4278241335:
+      /* Button gelb */
+      return Mode::toggleYellow;
+    case 4278208695:
+      /* Button gruen */
+      return Mode::toggleGreen;
+    case 4278192885:
+      /* Button blau */
+      return Mode::randomLightMode;
+    case 4278221445:
+      /* TODO: Maybe add functionality to 'fill uf' light from bottom to top (green to red) */
+      /* Button CH up */
+      return Mode::specialIncreaseSpeed;
+    case 4278245415:
+      /* TODO: Maybe add functionality to 'fill uf' light from btop to bottom (red to green) */
+      /* Button CH down */
+      return Mode::specialDecreaseSpeed;
+    case 4278220935:
+      /* Button left */
+      return Mode::lightsRunningFromTop;
+    case 4278205125:
+      /* Button right */
+      return Mode::lightsRunningFromBottom;
+    case 4278237765:
+      /* Button SUB-T */
+      return Mode::blinkAll;
+    case 4278253575:
+      /* Button OK */
+      return Mode::blinkRedGreenAlternating;
+    case 4278233175:
+      /* Audio --> Is located above red button */
+      return Mode::blinkRed;
+    case 4278249495:
+      /* Button EPG --> Is located above yellow button */
+      return Mode::blinkYellow;
+    case 4278216855:
+      /* Button mode --> Is located above green button */
+      return Mode::blinkGreen;
+    case 4278213285:
+      /* Button 0 */
+      return Mode::toggleRandom;
+    case 4278235725:
+      /* Button 1 */
+      return Mode::autoTrafficLightPhases;
+    case 4278219405:
+      /* Button 2 */
+      return Mode::lightsRunningFromTop;
+    case 4278252045:
+      /* Button 3 */
+      return Mode::lightsRunningFromBottom;
+    case 4278201045:
+      /* Button FAVOR */
+      return Mode::toggleRandom;
+    case 4278212775:
+      /* Button PG- */
+      return Mode::specialDecreaseSpeed;
+    case 4278196965:
+      /* Button PG+ */
+      return Mode::specialIncreaseSpeed;
+    case 4278235215:
+      /* Button INFO */
+      return Mode::blinkRedUserdefined;
+    case 4278218895:
+      /* Button SLEEP */
+      return Mode::blinkGreenUserdefined;
+    case 4278251535:
+      /* Button SUB-T */
+      return Mode::blinkYellowUserdefined;
+    case 4278203085:
+      /* Button TEXT */
+      return Mode::blinkRandom;
+    case 4278245925:
+      /* Button LAST */
+      return Mode::specialGotoPreviousMode;
+    case 4278229605:
+      /* Button TV/R */
+      return Mode::specialGotoNextMode;
+    default:
+      /* Buttom long press / unhandled IR code */
+      return Mode::nothing;
+  }
+  /* TODO: fixme Maybe change this to 'lastRemoteValueReceived' */
+  lastRemoteValueExecuted = remoteValue;
+}
+
+/* Converts IR received codes to number to be used in launchMode */
 short remoteCodeToMode(unsigned long remoteValue) {
   switch (remoteValue) {
     case 4278227565:
@@ -957,8 +1064,154 @@ short remoteCodeToMode(unsigned long remoteValue) {
       /* Buttom long press / unhandled IR code */
       return 0;
   }
-  /* TODO: Maybe change this to 'lastRemoteValueReceived' */
+  /* TODO: Fixme Maybe change this to 'lastRemoteValueReceived' */
   lastRemoteValueExecuted = remoteValue;
+}
+
+void launchMode2(short mode, bool userPressedButton) {
+  /* Stop 'parallel' running lightmodes. If we don't do this, we'll run into total chaos! Ignore 0 (e.g. IR long press button)!! */
+  if (mode != 0 && mode != lastMode) {
+    Serial.println("Mode has changed");
+    Serial.println("mode_old:");
+    Serial.println(lastMode);
+    Serial.println("mode_new:");
+    Serial.println(mode);
+  }
+  if (userPressedButton) {
+    Serial.println("User performed action --> Stopping all tickers & resetting subMode");
+    /* Stop 'parallel' running function calls / blinkers */
+    stopAllTickers();
+    /* Reset subMode so that functions like lightsRunning will start/stop correctly */
+    subMode = 0;
+    /* Reset eventually existing waittimes as user has performed action. */
+    waitUntilTimestamp = 0;
+  }
+  /* First handle specialModes */
+  bool saveCurrentModeNumber = false;
+  switch (mode) {
+    /* TODO: Maybe add loggers for user-mode changes */
+    case 300:
+      if (userPressedButton) {
+        decreaseBlinkSpeed();
+      }
+      break;
+    case 301:
+      if (userPressedButton) {
+        increaseBlinkSpeed();
+      }
+      break;
+    case 302:
+      if (userPressedButton) {
+        mode = getPreviousMode();
+        /* User has changed mode number --> We can save current number */
+        saveCurrentModeNumber = true;
+      }
+      break;
+    case 303:
+      if (userPressedButton) {
+        mode = getNextMode();
+        /* User has changed mode number --> We can save current number */
+        saveCurrentModeNumber = true;
+      }
+      break;
+    default:
+      saveCurrentModeNumber = true;
+      break;
+  }
+
+  /* Now handle normalModes */
+  switch (mode) {
+    case 1:
+      if (userPressedButton) {
+        toggleAll();
+      }
+      break;
+    case 2:
+      if (userPressedButton) {
+        allOff();
+      }
+      break;
+    case 3:
+      if (userPressedButton) {
+        toggleRed();
+      }
+      break;
+    case 4:
+      if (userPressedButton) {
+        toggleYellow();
+      }
+      break;
+    case 5:
+      if (userPressedButton) {
+        toggleGreen();
+      }
+      break;
+    case 6:
+      randomLightMode();
+      break;
+    case 7:
+      /* TODO: Maybe add functionality to 'fill uf' light from bottom to top (green to red) */
+      greenToRed();
+      break;
+    case 8:
+      /* TODO: Maybe add functionality to 'fill uf' light from btop to bottom (red to green) */
+      redToGreen();
+      break;
+    case 9:
+      lightsRunningFromTop(tickerLoopInfinite, currentDelay);
+      break;
+    case 10:
+      lightsRunningFromBottom(tickerLoopInfinite, currentDelay);
+      break;
+    case 11:
+      blinkAllTicker(tickerLoopInfinite, 1000);
+      break;
+    case 12:
+      blinkRedGreenAlternating(tickerLoopInfinite, 1000);
+      break;
+    case 13:
+      blinkTicker(PIN_LED_RED, tickerLoopInfinite, 1000);
+      break;
+    case 14:
+      blinkTicker(PIN_LED_YELLOW, tickerLoopInfinite, 1000);
+      break;
+    case 15:
+      blinkTicker(PIN_LED_GREEN, tickerLoopInfinite, 1000);
+      break;
+    case 16:
+      if (userPressedButton) {
+        toggleRandom();
+      }
+      break;
+    case 17:
+      autoTrafficLightPhases();
+      break;
+    case 18:
+      if (userPressedButton) {
+        toggleRandom();
+      }
+      break;
+    case 19:
+      blinkTicker(PIN_LED_RED, tickerLoopInfinite, currentDelay);
+      break;
+    case 20:
+      blinkTicker(PIN_LED_YELLOW, tickerLoopInfinite, currentDelay);
+      break;
+    case 21:
+      blinkTicker(PIN_LED_GREEN, tickerLoopInfinite, currentDelay);
+      break;
+    case 22:
+      /* TODO: Fix this mode */
+      blinkRandom(0, currentDelay);
+      break;
+    default:
+      break;
+  }
+  /* Ignore invalid modes and "settings" modes. */
+  if (mode > 0 && saveCurrentModeNumber) {
+    /* Remember last executed mode */
+    lastMode = mode;
+  }
 }
 
 
@@ -1012,6 +1265,7 @@ void launchMode(short mode, bool userPressedButton) {
       saveCurrentModeNumber = true;
       break;
   }
+
   /* Now handle normalModes */
   switch (mode) {
     case 1:
