@@ -10,8 +10,6 @@
 /* Waittime for official yellow blink signal */
 #define yellowBlinkTimeOfficial 800
 #define greenBlinkTime 500
-/* For tickers to launch callback function infinitely */
-#define tickerLoopInfinite 0
 /* Min/Max count number for all blinker loops */
 #define minBlinkCount 3
 #define maxShortBlinkCount 10
@@ -37,15 +35,15 @@
 #define PIN_LED_YELLOW 3
 #define PIN_LED_GREEN 4
 
-enum class Mode : short {nothing, allOn, allOff,
-                         toggleAll, toggleRed, toggleYellow, toggleGreen, toggleRandom,
-                         blinkAll, blinkRed, blinkYellow, blinkGreen, blinkRedUserdefined, blinkYellowUserdefined, blinkGreenUserdefined, blinkRedGreenAlternating, blinkRandom,
-                         greenToRed, redToGreen,
-                         lightsRunningFromTop, lightsRunningFromBottom, randomLightMode,
-                         autoTrafficLightPhases,
-                         specialIncreaseSpeed = 300, specialDecreaseSpeed,
-                         specialGotoPreviousMode, specialGotoNextMode
-                        };
+const short modeAllOn = 1, modeAllOff = 2,
+            modeToggleAll = 3, modeToggleRed = 4, modeToggleYellow = 5, modeToggleGreen = 6, modeToggleRandom = 7,
+            modeBlinkAll = 8, modeBlinkRed = 9, modeBlinkYellow = 10, modeBlinkGreen = 11, modeBlinkRedUserdefined = 12, modeBlinkYellowUserdefined = 13, modeBlinkGreenUserdefined = 14, modeBlinkRedGreenAlternating = 15, modeBlinkRandom = 16,
+            modeGreenToRed = 17, modeRedToGreen = 18,
+            modeLightsRunningFromTop = 19, modeLightsRunningFromBottom = 20, modeRandom = 21,
+            modeAutoTrafficLightPhases = 22,
+            modeSpecialIncreaseSpeed = 300, modeSpecialDecreaseSpeed = 301,
+            modeSpecialGotoPreviousMode = 302, modeSpecialGotoNextMode = 303;
+
 
 
 //int RECV_PIN = 11;  /*  Der Kontakt der am Infrarotsensor die Daten ausgibt, wird mit Pin 11 des Arduinoboards verbunden. */
@@ -61,7 +59,6 @@ unsigned long timestampLastSwitchedGreen = 0;
 /* Usually set in a time in the future for waiting purposes. */
 unsigned long waitUntilTimestamp = 0;
 
-/* TODO: Add functionality to increase/decrease this value via remote. Show current speed via lights running effect and show error sign on too low/too high value. */
 unsigned long currentDelay = 600;
 
 /* Value of last executed mode. Apart from the start, this should never be zero! */
@@ -622,6 +619,9 @@ void lightsRunningFromTopTicker() {
     case 2:
       yellowOff();
       greenOn();
+      break;
+    case 3:
+      greenOff();
       subMode = 0;
       break;
     default:
@@ -657,6 +657,9 @@ void lightsRunningFromBottomTicker() {
     case 2:
       yellowOff();
       redOn();
+      break;
+    case 3:
+      redOff();
       subMode = 0;
       break;
     default:
@@ -717,24 +720,25 @@ void blinkShowUserError() {
   blinkTicker(PIN_LED_RED, 6, 100);
 }
 
-/* Activates a random mode. TODO: Improve this as it may cause a long time in which we have no control over our light. */
+/* Activates a random mode. */
 void randomLightMode() {
+  /* TODO: This may not wait long enough for our light mode to get fully executed --> Either just make it wait longer or add functionality to find out how long exactly a function needs to be fully executed! */
   Serial.println("Random light mode");
   /* First make sure everything is turned off */
   allOff();
-  int randomNumberForMode = rand() % 10;
-  int randomNumberForNumberofBlinks = random(3, 10);
-  long randomNumberForBlinkDelay = random(201, 5001);
-  long randomNumberForDelay = random(301, 20001);
+  int randomNumberForMode = random(0, 12);
+  int randomNumberForNumberofBlinks = random(3, 11);
+  long randomNumberForBlinkDelay = random(200, 5001);
+  long randomNumberForDelay = random(300, 20001);
   switch (randomNumberForMode) {
     case 0:
-      greenOn();
+      redOn();
       break;
     case 1:
       yellowOn();
       break;
     case 2:
-      redOn();
+      greenOn();
       break;
     case 3:
       greenToRed();
@@ -758,12 +762,13 @@ void randomLightMode() {
       blinkRandom(randomNumberForNumberofBlinks, randomNumberForBlinkDelay);
       break;
     case 10:
-      lightsRunningFromTop(tickerLoopInfinite, currentDelay);
+      lightsRunningFromTop(0, currentDelay);
       break;
     case 11:
-      lightsRunningFromBottom(tickerLoopInfinite, currentDelay);
+      lightsRunningFromBottom(0, currentDelay);
       break;
     default:
+      /* Do nothing - only wait if required */
       break;
   }
   waitTime(randomNumberForDelay);
@@ -790,6 +795,7 @@ short getPreviousMode() {
 }
 
 /* Decreases waittime for blinking */
+/* TODO: Maybe use another effect for showing current speed */
 void increaseBlinkSpeed() {
   long tempDelay = currentDelay - blinkWaitIncreaseDecreaseStep;
   if (tempDelay < minBlinkWait) {
@@ -807,6 +813,7 @@ void increaseBlinkSpeed() {
 }
 
 /* Increases waittime for blinking  */
+/* TODO: Maybe use another effect for showing current speed */
 void decreaseBlinkSpeed() {
   long tempDelay = currentDelay + blinkWaitIncreaseDecreaseStep;
   if (tempDelay > maxBlinkWait) {
@@ -841,7 +848,7 @@ void waitTime(short count, unsigned long waittime) {
   } else {
     final_waittime = count * waittime;
   }
-  /* TODO: Check this */
+  /* TODO: Check this - enabling this again might fix random mode! */
   //waitTime(final_waittime);
 }
 
@@ -875,343 +882,102 @@ bool isWaiting() {
 }
 
 /* Converts IR received codes to number to be used in launchMode */
-Mode remoteCodeToMode2(unsigned long remoteValue) {
-  switch (remoteValue) {
-    case 4278227565:
-      /* Button power */
-      return Mode::toggleAll;
-    case 4278243885:
-      /* Button mute */
-      return Mode::allOff;
-    case 4278225015:
-      /* Button rot */
-      return Mode::toggleRed;
-    case 4278241335:
-      /* Button gelb */
-      return Mode::toggleYellow;
-    case 4278208695:
-      /* Button gruen */
-      return Mode::toggleGreen;
-    case 4278192885:
-      /* Button blau */
-      return Mode::randomLightMode;
-    case 4278221445:
-      /* TODO: Maybe add functionality to 'fill uf' light from bottom to top (green to red) */
-      /* Button CH up */
-      return Mode::specialIncreaseSpeed;
-    case 4278245415:
-      /* TODO: Maybe add functionality to 'fill uf' light from btop to bottom (red to green) */
-      /* Button CH down */
-      return Mode::specialDecreaseSpeed;
-    case 4278220935:
-      /* Button left */
-      return Mode::lightsRunningFromTop;
-    case 4278205125:
-      /* Button right */
-      return Mode::lightsRunningFromBottom;
-    case 4278237765:
-      /* Button SUB-T */
-      return Mode::blinkAll;
-    case 4278253575:
-      /* Button OK */
-      return Mode::blinkRedGreenAlternating;
-    case 4278233175:
-      /* Audio --> Is located above red button */
-      return Mode::blinkRed;
-    case 4278249495:
-      /* Button EPG --> Is located above yellow button */
-      return Mode::blinkYellow;
-    case 4278216855:
-      /* Button mode --> Is located above green button */
-      return Mode::blinkGreen;
-    case 4278213285:
-      /* Button 0 */
-      return Mode::toggleRandom;
-    case 4278235725:
-      /* Button 1 */
-      return Mode::autoTrafficLightPhases;
-    case 4278219405:
-      /* Button 2 */
-      return Mode::lightsRunningFromTop;
-    case 4278252045:
-      /* Button 3 */
-      return Mode::lightsRunningFromBottom;
-    case 4278201045:
-      /* Button FAVOR */
-      return Mode::toggleRandom;
-    case 4278212775:
-      /* Button PG- */
-      return Mode::specialDecreaseSpeed;
-    case 4278196965:
-      /* Button PG+ */
-      return Mode::specialIncreaseSpeed;
-    case 4278235215:
-      /* Button INFO */
-      return Mode::blinkRedUserdefined;
-    case 4278218895:
-      /* Button SLEEP */
-      return Mode::blinkGreenUserdefined;
-    case 4278251535:
-      /* Button SUB-T */
-      return Mode::blinkYellowUserdefined;
-    case 4278203085:
-      /* Button TEXT */
-      return Mode::blinkRandom;
-    case 4278245925:
-      /* Button LAST */
-      return Mode::specialGotoPreviousMode;
-    case 4278229605:
-      /* Button TV/R */
-      return Mode::specialGotoNextMode;
-    default:
-      /* Buttom long press / unhandled IR code */
-      return Mode::nothing;
-  }
-  /* TODO: fixme Maybe change this to 'lastRemoteValueReceived' */
-  lastRemoteValueExecuted = remoteValue;
-}
-
-/* Converts IR received codes to number to be used in launchMode */
 short remoteCodeToMode(unsigned long remoteValue) {
   switch (remoteValue) {
     case 4278227565:
       /* Button power */
-      return 1;
+      return modeToggleAll;
     case 4278243885:
       /* Button mute */
-      return 2;
+      return modeAllOff;
     case 4278225015:
       /* Button rot */
-      return 3;
+      return modeToggleRed;
     case 4278241335:
       /* Button gelb */
-      return 4;
+      return modeToggleYellow;
     case 4278208695:
       /* Button gruen */
-      return 5;
+      return modeToggleGreen;
     case 4278192885:
       /* Button blau */
-      return 6;
+      return modeToggleRandom;
     case 4278221445:
       /* TODO: Maybe add functionality to 'fill uf' light from bottom to top (green to red) */
       /* Button CH up */
-      return 7;
+      return modeGreenToRed;
     case 4278245415:
       /* TODO: Maybe add functionality to 'fill uf' light from btop to bottom (red to green) */
       /* Button CH down */
-      return 8;
+      return modeRedToGreen;
     case 4278220935:
       /* Button left */
-      return 9;
+      return modeLightsRunningFromTop;
     case 4278205125:
       /* Button right */
-      return 10;
+      return modeLightsRunningFromBottom;
     case 4278237765:
       /* Button SUB-T */
-      return 11;
+      return modeBlinkAll;
     case 4278253575:
       /* Button OK */
-      return 12;
+      return modeBlinkRedGreenAlternating;
     case 4278233175:
       /* Audio --> Is located above red button */
-      return 13;
+      return modeBlinkRed;
     case 4278249495:
       /* Button EPG --> Is located above yellow button */
-      return 14;
+      return modeBlinkYellow;
     case 4278216855:
       /* Button mode --> Is located above green button */
-      return 15;
+      return modeBlinkRed;
     case 4278213285:
       /* Button 0 */
-      return 16;
+      /* TODO: Put something else here! */
+      return modeBlinkRandom;
     case 4278235725:
       /* Button 1 */
-      return 17;
+      return modeAutoTrafficLightPhases;
     case 4278219405:
       /* Button 2 */
-      return 9;
+      return modeLightsRunningFromTop;
     case 4278252045:
       /* Button 3 */
-      return 10;
+      return modeLightsRunningFromBottom;
     case 4278201045:
       /* Button FAVOR */
-      return 16;
+      return modeBlinkRandom;
     case 4278212775:
       /* Button PG- */
-      return 300;
+      return modeSpecialDecreaseSpeed;
     case 4278196965:
       /* Button PG+ */
-      return 301;
+      return modeSpecialIncreaseSpeed;
     case 4278235215:
       /* Button INFO */
-      return 19;
+      return modeBlinkRedUserdefined;
     case 4278218895:
       /* Button SLEEP */
-      return 21;
+      return modeBlinkYellowUserdefined;
     case 4278251535:
       /* Button SUB-T */
-      return 20;
+      return modeBlinkGreenUserdefined;
     case 4278203085:
       /* Button TEXT */
-      return 22;
+      /* TODO: Put something else here! */
+      return modeBlinkRandom;
     case 4278245925:
       /* Button LAST */
-      return 302;
+      return modeSpecialGotoPreviousMode;
     case 4278229605:
       /* Button TV/R */
-      return 303;
+      return modeSpecialGotoNextMode;
     default:
       /* Buttom long press / unhandled IR code */
       return 0;
   }
   /* TODO: Fixme Maybe change this to 'lastRemoteValueReceived' */
   lastRemoteValueExecuted = remoteValue;
-}
-
-void launchMode2(short mode, bool userPressedButton) {
-  /* Stop 'parallel' running lightmodes. If we don't do this, we'll run into total chaos! Ignore 0 (e.g. IR long press button)!! */
-  if (mode != 0 && mode != lastMode) {
-    Serial.println("Mode has changed");
-    Serial.println("mode_old:");
-    Serial.println(lastMode);
-    Serial.println("mode_new:");
-    Serial.println(mode);
-  }
-  if (userPressedButton) {
-    Serial.println("User performed action --> Stopping all tickers & resetting subMode");
-    /* Stop 'parallel' running function calls / blinkers */
-    stopAllTickers();
-    /* Reset subMode so that functions like lightsRunning will start/stop correctly */
-    subMode = 0;
-    /* Reset eventually existing waittimes as user has performed action. */
-    waitUntilTimestamp = 0;
-  }
-  /* First handle specialModes */
-  bool saveCurrentModeNumber = false;
-  switch (mode) {
-    /* TODO: Maybe add loggers for user-mode changes */
-    case 300:
-      if (userPressedButton) {
-        decreaseBlinkSpeed();
-      }
-      break;
-    case 301:
-      if (userPressedButton) {
-        increaseBlinkSpeed();
-      }
-      break;
-    case 302:
-      if (userPressedButton) {
-        mode = getPreviousMode();
-        /* User has changed mode number --> We can save current number */
-        saveCurrentModeNumber = true;
-      }
-      break;
-    case 303:
-      if (userPressedButton) {
-        mode = getNextMode();
-        /* User has changed mode number --> We can save current number */
-        saveCurrentModeNumber = true;
-      }
-      break;
-    default:
-      saveCurrentModeNumber = true;
-      break;
-  }
-
-  /* Now handle normalModes */
-  switch (mode) {
-    case 1:
-      if (userPressedButton) {
-        toggleAll();
-      }
-      break;
-    case 2:
-      if (userPressedButton) {
-        allOff();
-      }
-      break;
-    case 3:
-      if (userPressedButton) {
-        toggleRed();
-      }
-      break;
-    case 4:
-      if (userPressedButton) {
-        toggleYellow();
-      }
-      break;
-    case 5:
-      if (userPressedButton) {
-        toggleGreen();
-      }
-      break;
-    case 6:
-      randomLightMode();
-      break;
-    case 7:
-      /* TODO: Maybe add functionality to 'fill uf' light from bottom to top (green to red) */
-      greenToRed();
-      break;
-    case 8:
-      /* TODO: Maybe add functionality to 'fill uf' light from btop to bottom (red to green) */
-      redToGreen();
-      break;
-    case 9:
-      lightsRunningFromTop(tickerLoopInfinite, currentDelay);
-      break;
-    case 10:
-      lightsRunningFromBottom(tickerLoopInfinite, currentDelay);
-      break;
-    case 11:
-      blinkAllTicker(tickerLoopInfinite, 1000);
-      break;
-    case 12:
-      blinkRedGreenAlternating(tickerLoopInfinite, 1000);
-      break;
-    case 13:
-      blinkTicker(PIN_LED_RED, tickerLoopInfinite, 1000);
-      break;
-    case 14:
-      blinkTicker(PIN_LED_YELLOW, tickerLoopInfinite, 1000);
-      break;
-    case 15:
-      blinkTicker(PIN_LED_GREEN, tickerLoopInfinite, 1000);
-      break;
-    case 16:
-      if (userPressedButton) {
-        toggleRandom();
-      }
-      break;
-    case 17:
-      autoTrafficLightPhases();
-      break;
-    case 18:
-      if (userPressedButton) {
-        toggleRandom();
-      }
-      break;
-    case 19:
-      blinkTicker(PIN_LED_RED, tickerLoopInfinite, currentDelay);
-      break;
-    case 20:
-      blinkTicker(PIN_LED_YELLOW, tickerLoopInfinite, currentDelay);
-      break;
-    case 21:
-      blinkTicker(PIN_LED_GREEN, tickerLoopInfinite, currentDelay);
-      break;
-    case 22:
-      /* TODO: Fix this mode */
-      blinkRandom(0, currentDelay);
-      break;
-    default:
-      break;
-  }
-  /* Ignore invalid modes and "settings" modes. */
-  if (mode > 0 && saveCurrentModeNumber) {
-    /* Remember last executed mode */
-    lastMode = mode;
-  }
 }
 
 
@@ -1237,24 +1003,24 @@ void launchMode(short mode, bool userPressedButton) {
   bool saveCurrentModeNumber = false;
   switch (mode) {
     /* TODO: Maybe add loggers for user-mode changes */
-    case 300:
-      if (userPressedButton) {
-        decreaseBlinkSpeed();
-      }
-      break;
-    case 301:
+    case modeSpecialIncreaseSpeed:
       if (userPressedButton) {
         increaseBlinkSpeed();
       }
       break;
-    case 302:
+    case modeSpecialDecreaseSpeed:
+      if (userPressedButton) {
+        decreaseBlinkSpeed();
+      }
+      break;
+    case modeSpecialGotoPreviousMode:
       if (userPressedButton) {
         mode = getPreviousMode();
         /* User has changed mode number --> We can save current number */
         saveCurrentModeNumber = true;
       }
       break;
-    case 303:
+    case modeSpecialGotoNextMode:
       if (userPressedButton) {
         mode = getNextMode();
         /* User has changed mode number --> We can save current number */
@@ -1268,86 +1034,81 @@ void launchMode(short mode, bool userPressedButton) {
 
   /* Now handle normalModes */
   switch (mode) {
-    case 1:
+    case modeToggleAll:
       if (userPressedButton) {
         toggleAll();
       }
       break;
-    case 2:
+    case modeAllOff:
       if (userPressedButton) {
         allOff();
       }
       break;
-    case 3:
+    case modeToggleRed:
       if (userPressedButton) {
         toggleRed();
       }
       break;
-    case 4:
+    case modeToggleYellow:
       if (userPressedButton) {
         toggleYellow();
       }
       break;
-    case 5:
+    case modeToggleGreen:
       if (userPressedButton) {
         toggleGreen();
       }
       break;
-    case 6:
+    case modeRandom:
       randomLightMode();
       break;
-    case 7:
-      /* TODO: Maybe add functionality to 'fill uf' light from bottom to top (green to red) */
+    case modeGreenToRed:
+      /* TODO: Maybe add functionality to 'fill up' light from bottom to top (green to red) */
       greenToRed();
       break;
-    case 8:
-      /* TODO: Maybe add functionality to 'fill uf' light from btop to bottom (red to green) */
+    case modeRedToGreen:
+      /* TODO: Maybe add functionality to 'fill up' light from btop to bottom (red to green) */
       redToGreen();
       break;
-    case 9:
-      lightsRunningFromTop(tickerLoopInfinite, currentDelay);
+    case modeLightsRunningFromTop:
+      lightsRunningFromTop(0, currentDelay);
       break;
-    case 10:
-      lightsRunningFromBottom(tickerLoopInfinite, currentDelay);
+    case modeLightsRunningFromBottom:
+      lightsRunningFromBottom(0, currentDelay);
       break;
-    case 11:
-      blinkAllTicker(tickerLoopInfinite, 1000);
+    case modeBlinkAll:
+      blinkAllTicker(0, 1000);
       break;
-    case 12:
-      blinkRedGreenAlternating(tickerLoopInfinite, 1000);
+    case modeBlinkRedGreenAlternating:
+      blinkRedGreenAlternating(0, 1000);
       break;
-    case 13:
-      blinkTicker(PIN_LED_RED, tickerLoopInfinite, 1000);
+    case modeBlinkRed:
+      blinkTicker(PIN_LED_RED, 0, 1000);
       break;
-    case 14:
-      blinkTicker(PIN_LED_YELLOW, tickerLoopInfinite, 1000);
+    case modeBlinkYellow:
+      blinkTicker(PIN_LED_YELLOW, 0, 1000);
       break;
-    case 15:
-      blinkTicker(PIN_LED_GREEN, tickerLoopInfinite, 1000);
+    case modeBlinkGreen:
+      blinkTicker(PIN_LED_GREEN, 0, 1000);
       break;
-    case 16:
+    case modeToggleRandom:
       if (userPressedButton) {
         toggleRandom();
       }
       break;
-    case 17:
+    case modeAutoTrafficLightPhases:
       autoTrafficLightPhases();
       break;
-    case 18:
-      if (userPressedButton) {
-        toggleRandom();
-      }
+    case modeBlinkRedUserdefined:
+      blinkTicker(PIN_LED_RED, 0, currentDelay);
       break;
-    case 19:
-      blinkTicker(PIN_LED_RED, tickerLoopInfinite, currentDelay);
+    case modeBlinkYellowUserdefined:
+      blinkTicker(PIN_LED_YELLOW, 0, currentDelay);
       break;
-    case 20:
-      blinkTicker(PIN_LED_YELLOW, tickerLoopInfinite, currentDelay);
+    case modeBlinkGreenUserdefined:
+      blinkTicker(PIN_LED_GREEN, 0, currentDelay);
       break;
-    case 21:
-      blinkTicker(PIN_LED_GREEN, tickerLoopInfinite, currentDelay);
-      break;
-    case 22:
+    case modeBlinkRandom:
       /* TODO: Fix this mode */
       blinkRandom(0, currentDelay);
       break;
@@ -1393,7 +1154,7 @@ void setup()
 }
 
 bool tickerIsRunning() {
-  /* Ticker will stay in RUNNING state although repeats are exceeded --> This function is a small wrapper to get the 'real' state of our ticker (getRepeats=0 --> infinite run ). */
+  /* Ticker will stay in RUNNING state although repeats are exceeded --> This function is a small wrapper to get the 'real' state of our ticker (getRepeats=0 --> infinite run --> Will return false here as we cannot wait for an infinite Ticker to finish ;) ). */
   return test2.getState() == RUNNING && (test2.getRepeats() == 0 || test2.getRepeatsCounter() < test2.getRepeats());
 }
 
@@ -1410,7 +1171,6 @@ void loop() {
     /* Only launch mode if user has pressed a known button! */
     if (currentMode != 0) {
       launchMode(currentMode, true);
-
       lastRemoteValue = currentRemoteValue;
     }
     /* Der nächste Wert soll vom IR-Empfänger eingelesen werden */
@@ -1419,15 +1179,5 @@ void loop() {
     /* Only enter this if we're not currently waiting! */
     launchMode(lastMode, false);
   }
-
-  //  if (test2.getState() == RUNNING) {
-  //    Serial.println("RUNNING");
-  //    Serial.println("max_count");
-  //    Serial.println(test2.getRepeats());
-  //    Serial.println("current_count");
-  //    Serial.println(test2.getRepeatsCounter());
-  //  }
-
-
 
 }
