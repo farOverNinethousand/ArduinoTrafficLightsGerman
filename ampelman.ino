@@ -2,33 +2,36 @@
 #include <stdlib.h>
 /* Source: https://github.com/sstaub/Ticker */
 #include <Ticker.h>
-//#define generalDelayTime 2000
-/* Defines how long red + yellow stay on when switching to green. German law says red/yellow phase for 50 KM/h zones is 3 seconds. Source: https://de.wikipedia.org/wiki/Ampel */
+/* Defines how long red AND yellow stay on when switching to green. German law says red/yellow phase for 50 KM/h speedlimit is 3 seconds.
+   The higher the speedlimit, the more time drivers get. Source: https://de.wikipedia.org/wiki/Ampel */
 #define durationYellowRedPhase 3000
+/* Delay for official yellow blink signal */
+#define yellowBlinkTimeOfficial 800
+/* Default blink delays for individual LEDs. */
 #define redBlinkTime 500
 #define yellowBlinkTime 500
-/* Waittime for official yellow blink signal */
-#define yellowBlinkTimeOfficial 800
 #define greenBlinkTime 500
 /* Min/Max count number for all blinker loops */
 #define minBlinkCount 3
-#define maxShortBlinkCount 10
-/* Min/max waittime in between short blinking/lights running */
+#define maxBlinkCount 20
+/* Min/max/default waittime in between blinking / lights-running */
 #define minBlinkWait 200
+#define defaultBlinkWait 600
 #define maxBlinkWait 5000
-/* Increase/decrease value for button press */
+/* Blink delay increase/decrease step */
 #define blinkWaitIncreaseDecreaseStep 100
 /* Min/max waittime for AutoTrafficLightPhases */
 #define minTimeBetweenAutoTrafficLightPhases 1000
 #define maxTimeBetweenAutoTrafficLightPhases 25000
 #define minTimeBetweenBlinkRedGreenAlternating 1000
 //#define maxTimeBetweenBlinkRedGreenAlternating 4000
-/* Important: Defines how fast relais or our lights can be switched! */
+/* Important: Defines how fast the switch relais or our lights can be switched! */
 #define hardwareMaxSwitchingSpeed 100
-/* Our code will never wait longer than this value! */
-#define generalMaxWaittime 120000
-/* Important: Keep this updated for nextMode/previousMode functions to work!! */
-#define generalMaxModeNumber 23
+/* Minimum delay in random mode. */
+#define randomModeMinWait 300
+/* Our code will never wait longer than this value (also not in random mode)! */
+//#define generalMaxWaittime 120000
+#define generalMaxWaittime 6000
 
 #define PIN_RECV 11
 #define PIN_LED_RED 2
@@ -41,12 +44,11 @@ const short modeAllOn = 1, modeAllOff = 2,
             modeGreenToRed = 17, modeRedToGreen = 18,
             modeLightsRunningFromTop = 19, modeLightsRunningFromBottom = 20, modeRandom = 21,
             modeAutoTrafficLightPhases = 22,
+            /* Important: Keep this updated for nextMode/previousMode functions to work!! */
+            generalMaxModeNumber = 23,
             modeSpecialIncreaseSpeed = 300, modeSpecialDecreaseSpeed = 301,
             modeSpecialGotoPreviousMode = 302, modeSpecialGotoNextMode = 303;
 
-
-
-//int RECV_PIN = 11;  /*  Der Kontakt der am Infrarotsensor die Daten ausgibt, wird mit Pin 11 des Arduinoboards verbunden. */
 
 IRrecv irrecv(PIN_RECV);   /* An dieser Stelle wird ein Objekt definiert, dass den Infrarotsensor an Pin 11 ausliest. */
 
@@ -59,10 +61,10 @@ unsigned long timestampLastSwitchedGreen = 0;
 /* Usually set in a time in the future for waiting purposes. */
 unsigned long waitUntilTimestamp = 0;
 
-unsigned long currentDelay = 600;
+unsigned long currentDelay = defaultBlinkWait;
 
-/* Value of last executed mode. Apart from the start, this should never be zero! */
-short lastMode = 0;
+/* Value of last executed mode. Never set this < 1! */
+short lastMode = 1;
 
 /* E.g. for running lights, this will count up to 2, then repeat. */
 short subMode = 0;
@@ -470,7 +472,7 @@ void redToGreen() {
   }
 }
 
-void blinkRedTicker(int maxCount, unsigned long waittime) {
+void blinkRedTicker(int maxCount, long waittime) {
   Serial.println("Blink red");
   test2.setCallback(toggleRed);
   test2.setRepeats(maxCount);
@@ -479,7 +481,7 @@ void blinkRedTicker(int maxCount, unsigned long waittime) {
   waitTime(maxCount, waittime);
 }
 
-void blinkYellowTicker(int maxCount, unsigned long waittime) {
+void blinkYellowTicker(int maxCount, long waittime) {
   Serial.println("Blink yellow");
   test2.setCallback(toggleYellow);
   test2.setRepeats(maxCount);
@@ -488,7 +490,7 @@ void blinkYellowTicker(int maxCount, unsigned long waittime) {
   waitTime(maxCount, waittime);
 }
 
-void blinkGreenTicker(int maxCount, unsigned long waittime) {
+long blinkGreenTicker(int maxCount, long waittime) {
   Serial.println("Blink green");
   test2.setCallback(toggleGreen);
   test2.setRepeats(maxCount);
@@ -501,7 +503,7 @@ void blinkGreenTicker(int maxCount, unsigned long waittime) {
 /* Blink specific lights. */
 void blinkTicker(short pin, short maxCount, long waittime) {
   /* 0 = blink infinitely so we should not correct that. */
-  maxCount = fixBlinkmaxCountTicker(maxCount, maxShortBlinkCount);
+  maxCount = fixBlinkmaxCountTicker(maxCount, maxBlinkCount);
   waittime = fixWaittime(waittime, minBlinkWait, maxBlinkWait);
   switch (pin) {
     case PIN_LED_RED:
@@ -520,9 +522,8 @@ void blinkTicker(short pin, short maxCount, long waittime) {
   waitTime(maxCount, waittime);
 }
 
-/* TODO: Add count- and wait parameters */
-void blinkAllTicker(short maxCount, long waittime) {
-  maxCount = fixBlinkmaxCountTicker(maxCount, maxShortBlinkCount);
+long blinkAllTicker(short maxCount, long waittime) {
+  maxCount = fixBlinkmaxCountTicker(maxCount, maxBlinkCount);
   waittime = fixWaittime(waittime, minBlinkWait, maxBlinkWait);
   Serial.println("Blink all");
   allOff();
@@ -531,6 +532,7 @@ void blinkAllTicker(short maxCount, long waittime) {
   test2.setInterval(waittime);
   test2.start();
   waitTime(maxCount, waittime);
+  return waittime;
 }
 
 /* Toggles a random color */
@@ -580,6 +582,7 @@ int fixBlinkmaxCountTicker(int givenMaxCount, int fallbackMaxCount) {
 
 /* TODO: Yellow phase is not yet nice here */
 void autoTrafficLightPhases() {
+  /* TODO: Improve this as it may change to other modes while current mode is not finished (e.g. in between blinking). */
   int randomNumber = rand() % 2;
   if ((subMode == 0 && randomNumber == 1) || subMode > 0) {
     toggleRedGreenGreenRed();
@@ -612,16 +615,11 @@ void lightsRunningFromTopTicker() {
       subMode++;
       break;
     case 1:
-      redOff();
-      yellowOn();
+      onlyYellow();
       subMode++;
       break;
     case 2:
-      yellowOff();
-      greenOn();
-      break;
-    case 3:
-      greenOff();
+      onlyGreen();
       subMode = 0;
       break;
     default:
@@ -633,7 +631,7 @@ void lightsRunningFromTopTicker() {
 
 /* Run this either in infinite mode (maxCount = 0) or1 time --> maxCount = 3 (each call = 1 stage!) */
 void lightsRunningFromTop(short maxCount, unsigned long waittime) {
-  maxCount = fixBlinkmaxCountTicker(maxCount, maxShortBlinkCount);
+  maxCount = fixBlinkmaxCountTicker(maxCount, maxBlinkCount);
   test2.setCallback(lightsRunningFromTopTicker);
   test2.setRepeats(maxCount);
   test2.setInterval(waittime);
@@ -650,16 +648,11 @@ void lightsRunningFromBottomTicker() {
       subMode++;
       break;
     case 1:
-      greenOff();
-      yellowOn();
+      onlyYellow();
       subMode++;
       break;
     case 2:
-      yellowOff();
-      redOn();
-      break;
-    case 3:
-      redOff();
+      onlyRed();
       subMode = 0;
       break;
     default:
@@ -716,20 +709,31 @@ void blinkRedGreenAlternating(short maxCount, unsigned long waittime) {
 }
 
 void blinkShowUserError() {
-  allOff();
-  blinkTicker(PIN_LED_RED, 6, 100);
+  //allOff();
+  blinkTicker(PIN_LED_RED, 6, hardwareMaxSwitchingSpeed);
 }
+
+void randomBlinkMode() {
+  /* TODO: Add functionality */
+}
+
+void buzzerMode(){
+  /* TODO: Add functionality */
+  }
 
 /* Activates a random mode. */
 void randomLightMode() {
+  /* TODO: Improve this as it may change to other modes while current mode is not finished (e.g. in between blinking). */
   /* TODO: This may not wait long enough for our light mode to get fully executed --> Either just make it wait longer or add functionality to find out how long exactly a function needs to be fully executed! */
   Serial.println("Random light mode");
   /* First make sure everything is turned off */
   allOff();
   int randomNumberForMode = random(0, 12);
-  int randomNumberForNumberofBlinks = random(3, 11);
-  long randomNumberForBlinkDelay = random(200, 5001);
-  long randomNumberForDelay = random(300, 20001);
+  int randomNumberForNumberofBlinks = getRandomNumberOfBlinks();
+  Serial.println("numberofblinks:");
+  Serial.println(randomNumberForNumberofBlinks);
+  long randomNumberForBlinkDelay = getRandomDelayBetweenBlinks();
+  long randomNumberForDelay = getRandomWaitTime();
   switch (randomNumberForMode) {
     case 0:
       redOn();
@@ -774,6 +778,18 @@ void randomLightMode() {
   waitTime(randomNumberForDelay);
 }
 
+int getRandomNumberOfBlinks() {
+  return random(minBlinkCount, maxBlinkCount);
+}
+
+int getRandomDelayBetweenBlinks() {
+  return random(minBlinkWait, maxBlinkWait + 1);
+}
+
+long getRandomWaitTime() {
+  return random(randomModeMinWait, generalMaxWaittime + 1);
+}
+
 short getNextMode() {
   short nextMode = lastMode + 1;
   if (nextMode > generalMaxModeNumber) {
@@ -797,12 +813,17 @@ short getPreviousMode() {
 /* Decreases waittime for blinking */
 /* TODO: Maybe use another effect for showing current speed */
 void increaseBlinkSpeed() {
+  Serial.println("Increasing blink speed");
   long tempDelay = currentDelay - blinkWaitIncreaseDecreaseStep;
   if (tempDelay < minBlinkWait) {
+    Serial.println("Failed to increase blink speed: New delay value is too low:");
+    Serial.println(tempDelay);
     /* New value is too low --> Show error */
     blinkShowUserError();
   } else {
-    Serial.println("delay has changed:");
+    Serial.println("delay has changed");
+    Serial.println("delay_old:");
+    Serial.println(currentDelay);
     /* Set new blink-speed */
     currentDelay = tempDelay;
     /* Demonstrate new blink-speed */
@@ -815,25 +836,41 @@ void increaseBlinkSpeed() {
 /* Increases waittime for blinking  */
 /* TODO: Maybe use another effect for showing current speed */
 void decreaseBlinkSpeed() {
+  Serial.println("Decreasing blink speed");
   long tempDelay = currentDelay + blinkWaitIncreaseDecreaseStep;
   if (tempDelay > maxBlinkWait) {
+    Serial.println("Failed to decrease blink speed: New delay value is too high:");
+    Serial.println(tempDelay);
     /* New value is too high --> Show error */
-    /* TODO: Maybe launch lightsRunningFromBottom afterwards as well!  */
     blinkShowUserError();
   } else {
     Serial.println("delay has changed:");
+    Serial.println("delay_old:");
+    Serial.println(currentDelay);
     /* Set new blink-speed */
     currentDelay = tempDelay;
     /* Demonstrate new blink-speed */
-    /* TODO: Maybe launch lightsRunningFromBottom afterwards as well!  */
     lightsRunningFromBottom(3, currentDelay);
   }
   Serial.println("currentDelay:");
   Serial.println(currentDelay);
 }
 
+/* Put init 'animation' here */
+void showStartSequence() {
+  /* Start sequence */
+  lightsRunningFromBottomOld(150);
+  redOff();
+  delay(200);
+  lightsRunningFromTopOld(150);
+  delay(200);
+  blinkAllOld(200);
+  delay(200);
+  allOn();
+}
+
+/* Returns random number 2, 3 or 4.  */
 short getRandomPin() {
-  /* TODO: Check this */
   long randomNumber = random(2, 5);
   Serial.println("random_nr");
   Serial.println(randomNumber);
@@ -891,17 +928,19 @@ short remoteCodeToMode(unsigned long remoteValue) {
       /* Button mute */
       return modeAllOff;
     case 4278225015:
-      /* Button rot */
+      /* Button red */
       return modeToggleRed;
     case 4278241335:
-      /* Button gelb */
+      /* Button yellow */
       return modeToggleYellow;
     case 4278208695:
-      /* Button gruen */
+      /* Button green */
       return modeToggleGreen;
     case 4278192885:
       /* Button blau */
       return modeToggleRandom;
+    case 4278254085:
+      return modeRandom;
     case 4278221445:
       /* TODO: Maybe add functionality to 'fill uf' light from bottom to top (green to red) */
       /* Button CH up */
@@ -930,7 +969,7 @@ short remoteCodeToMode(unsigned long remoteValue) {
       return modeBlinkYellow;
     case 4278216855:
       /* Button mode --> Is located above green button */
-      return modeBlinkRed;
+      return modeBlinkGreen;
     case 4278213285:
       /* Button 0 */
       /* TODO: Put something else here! */
@@ -982,66 +1021,89 @@ short remoteCodeToMode(unsigned long remoteValue) {
 
 
 void launchMode(short mode, bool userPressedButton) {
-  /* Stop 'parallel' running lightmodes. If we don't do this, we'll run into total chaos! Ignore 0 (e.g. IR long press button)!! */
-  if (mode != 0 && mode != lastMode) {
-    Serial.println("Mode has changed");
+  /* Only save number of last mode if  it was NOT a special mode! */
+  bool saveCurrentModeNumber = false;
+  bool currentModeIsSpecialMode = isSpecialMode(mode);
+  /* First handle specialModes */
+  if (currentModeIsSpecialMode) {
+    short modeNew = mode;
+    switch (mode) {
+      /* TODO: Maybe add loggers for user-mode changes */
+      case modeSpecialIncreaseSpeed:
+        if (userPressedButton) {
+          increaseBlinkSpeed();
+        }
+        break;
+      case modeSpecialDecreaseSpeed:
+        if (userPressedButton) {
+          decreaseBlinkSpeed();
+        }
+        break;
+      case modeSpecialGotoPreviousMode:
+        if (userPressedButton) {
+          modeNew = getPreviousMode();
+          /* User has changed mode number --> We can save current number */
+          saveCurrentModeNumber = true;
+        }
+        break;
+      case modeSpecialGotoNextMode:
+        if (userPressedButton) {
+          modeNew = getNextMode();
+          saveCurrentModeNumber = true;
+        }
+        break;
+      default:
+        saveCurrentModeNumber = true;
+        break;
+    }
+    /* Check if user has changed mode via button press e.g. next/previous mode. */
+    if (modeNew != mode) {
+      Serial.println("Mode has been changed via increase/decrease mode");
+      /* E.g. all lights are off and current mode is 1 (= toggle all) - lights would just stay off if they were off in the first place when we reached this mode.
+         This is why we simply pretend that the user has pressed this mode button.
+      */
+      userPressedButton = true;
+      mode = modeNew;
+    }
+  } else {
+    saveCurrentModeNumber = true;
+  }
+  /* Check if mode has changed compared to the last real mode. Ignores special modes. */
+  if (mode != 0 && !currentModeIsSpecialMode && mode != lastMode) {
+    Serial.println("Mode has changed compared to last mode");
     Serial.println("mode_old:");
     Serial.println(lastMode);
     Serial.println("mode_new:");
     Serial.println(mode);
-  }
-  if (userPressedButton) {
-    Serial.println("User performed action --> Stopping all tickers & resetting subMode");
+    /* Reset all. */
+    /* Stop 'parallel' running lightmodes. If we don't do this, we may run into total chaos!*/
+    Serial.println("Stopping all tickers & resetting subMode");
     /* Stop 'parallel' running function calls / blinkers */
     stopAllTickers();
     /* Reset subMode so that functions like lightsRunning will start/stop correctly */
     subMode = 0;
     /* Reset eventually existing waittimes as user has performed action. */
     waitUntilTimestamp = 0;
-  }
-  /* First handle specialModes */
-  bool saveCurrentModeNumber = false;
-  switch (mode) {
-    /* TODO: Maybe add loggers for user-mode changes */
-    case modeSpecialIncreaseSpeed:
-      if (userPressedButton) {
-        increaseBlinkSpeed();
-      }
-      break;
-    case modeSpecialDecreaseSpeed:
-      if (userPressedButton) {
-        decreaseBlinkSpeed();
-      }
-      break;
-    case modeSpecialGotoPreviousMode:
-      if (userPressedButton) {
-        mode = getPreviousMode();
-        /* User has changed mode number --> We can save current number */
-        saveCurrentModeNumber = true;
-      }
-      break;
-    case modeSpecialGotoNextMode:
-      if (userPressedButton) {
-        mode = getNextMode();
-        /* User has changed mode number --> We can save current number */
-        saveCurrentModeNumber = true;
-      }
-      break;
-    default:
-      saveCurrentModeNumber = true;
-      break;
+  } else {
+    //Serial.println("mode_current:");
+    //Serial.println(mode);
   }
 
   /* Now handle normalModes */
   switch (mode) {
-    case modeToggleAll:
+    case modeAllOn:
       if (userPressedButton) {
-        toggleAll();
+        allOn();
       }
       break;
     case modeAllOff:
       if (userPressedButton) {
         allOff();
+      }
+      break;
+    case modeToggleAll:
+      if (userPressedButton) {
+        toggleAll();
       }
       break;
     case modeToggleRed:
@@ -1142,20 +1204,17 @@ void setup()
   yellow = true;
   green = true;
   allOff();
-  /* Start sequence */
-  lightsRunningFromBottomOld(150);
-  redOff();
-  delay(200);
-  lightsRunningFromTopOld(150);
-  delay(200);
-  blinkAllOld(200);
-  delay(200);
-  allOn();
+  showStartSequence();
 }
 
 bool tickerIsRunning() {
   /* Ticker will stay in RUNNING state although repeats are exceeded --> This function is a small wrapper to get the 'real' state of our ticker (getRepeats=0 --> infinite run --> Will return false here as we cannot wait for an infinite Ticker to finish ;) ). */
   return test2.getState() == RUNNING && (test2.getRepeats() == 0 || test2.getRepeatsCounter() < test2.getRepeats());
+}
+
+/* Special modes are modes which are no light modes themselves but change settings such as blink delays or go to next/previous mode. */
+bool isSpecialMode(short mode) {
+  return mode >= 300;
 }
 
 /* Der loop-Teil fällt durch den Rückgriff auf die „library“ sehr kurz aus. */
