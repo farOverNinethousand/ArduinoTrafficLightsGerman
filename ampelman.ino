@@ -714,12 +714,37 @@ void blinkShowUserError() {
 }
 
 void randomBlinkMode() {
-  /* TODO: Add functionality */
+  /* TODO: Add use this somewhere */
+  Serial.println("Random blink mode");
+  int randomNumberForMode = random(0, 5);
+  int randomNumberForNumberofBlinks = getRandomNumberOfBlinks();
+  long randomNumberForBlinkDelay = getRandomDelayBetweenBlinks();
+  switch (randomNumberForMode) {
+    case 0:
+      blinkAllTicker(randomNumberForNumberofBlinks, randomNumberForBlinkDelay);
+      break;
+    case 1:
+      blinkRedGreenAlternating(randomNumberForNumberofBlinks, randomNumberForBlinkDelay);
+      break;
+    case 2:
+      blinkTicker(PIN_LED_RED, randomNumberForNumberofBlinks, randomNumberForBlinkDelay);
+      break;
+    case 3:
+      blinkTicker(PIN_LED_YELLOW, randomNumberForNumberofBlinks, randomNumberForBlinkDelay);
+      break;
+    case 4:
+      blinkTicker(PIN_LED_GREEN, randomNumberForNumberofBlinks, randomNumberForBlinkDelay);
+      break;
+    default:
+      Serial.println("This should never happen");
+      blinkTicker(PIN_LED_RED, randomNumberForNumberofBlinks, randomNumberForBlinkDelay);
+      break;
+  }
 }
 
-void buzzerMode(){
+void buzzerMode() {
   /* TODO: Add functionality */
-  }
+}
 
 /* Activates a random mode. */
 void randomLightMode() {
@@ -730,8 +755,6 @@ void randomLightMode() {
   allOff();
   int randomNumberForMode = random(0, 12);
   int randomNumberForNumberofBlinks = getRandomNumberOfBlinks();
-  Serial.println("numberofblinks:");
-  Serial.println(randomNumberForNumberofBlinks);
   long randomNumberForBlinkDelay = getRandomDelayBetweenBlinks();
   long randomNumberForDelay = getRandomWaitTime();
   switch (randomNumberForMode) {
