@@ -574,6 +574,26 @@ void randomOnlyOneOn() {
   }
 }
 
+/* Turns on only one random color */
+void randomMultipleOn() {
+  Serial.println("Random multiple on");
+  int maxNumberofLights = random(1, 3);
+  for (int i = 0; i <= maxNumberofLights; i++) {
+    short randomNumber = getRandomPin();
+    switch (randomNumber) {
+      case 2:
+        redOn();
+        break;
+      case 3:
+        yellowOn();
+        break;
+      case 4:
+        greenOn();
+        break;
+    }
+  }
+}
+
 /* Makes sure that waittime we use for blinking purposes is valid. */
 int fixWaittime(long givenWaitMilliseconds, long minMilliseconds, long maxMilliseconds) {
   int waitMilliseconds;
@@ -903,7 +923,8 @@ void modeBuzzr(bool buttonPressed) {
     allOff();
     waitTime(random(1500, 6501));
   } else if (!oneIsOn()) {
-    randomOnlyOneOn();
+    randomMultipleOn();
+    //randomOnlyOneOn();
   }
 
 }
