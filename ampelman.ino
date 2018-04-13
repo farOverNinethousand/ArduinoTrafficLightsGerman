@@ -31,7 +31,7 @@
 #define randomModeMinWait 300
 /* Our code will never wait longer than this value (also not in random mode)! */
 //#define generalMaxWaittime 120000
-#define generalMaxWaittime 6000
+#define generalMaxWaittime 120000
 
 #define PIN_RECV 11
 #define PIN_LED_RED 2
@@ -42,10 +42,11 @@ const short modeAllOn = 1, modeAllOff = 2,
             modeToggleAll = 3, modeToggleRed = 4, modeToggleYellow = 5, modeToggleGreen = 6, modeToggleRandom = 7,
             modeBlinkAll = 8, modeBlinkRed = 9, modeBlinkYellow = 10, modeBlinkGreen = 11, modeBlinkRedUserdefined = 12, modeBlinkYellowUserdefined = 13, modeBlinkGreenUserdefined = 14, modeBlinkRedGreenAlternating = 15, modeBlinkRandom = 16,
             modeGreenToRed = 17, modeRedToGreen = 18,
-            modeLightsRunningFromTop = 19, modeLightsRunningFromBottom = 20, modeRandom = 21,
-            modeAutoTrafficLightPhases = 22,
+            modeLightsRunningFromTop = 19, modeLightsRunningFromBottom = 20, modeRandom = 21, modeRandomOnlyOne = 22,
+            modeAutoTrafficLightPhases = 23,
+            modeBuzzer = 24,
             /* Important: Keep this updated for nextMode/previousMode functions to work!! */
-            generalMaxModeNumber = 23,
+            generalMaxModeNumber = 25,
             modeSpecialIncreaseSpeed = 300, modeSpecialDecreaseSpeed = 301,
             modeSpecialGotoPreviousMode = 302, modeSpecialGotoNextMode = 303;
 
@@ -128,6 +129,10 @@ void off(short pin) {
   }
 }
 
+bool oneIsOn() {
+  return red | yellow | green;
+}
+
 void toggle(short pin) {
   if (!isOn(pin)) {
     on(pin);
@@ -195,42 +200,6 @@ void greenOff() {
     digitalWrite (PIN_LED_GREEN, HIGH);
     green = false;
     timestampLastSwitchedGreen = millis();
-  }
-}
-
-void onlyRed() {
-  if (yellow) {
-    yellowOff();
-  }
-  if (green) {
-    greenOff();
-  }
-  if (!red) {
-    redOn();
-  }
-}
-
-void onlyYellow() {
-  if (red) {
-    redOff();
-  }
-  if (green) {
-    greenOff();
-  }
-  if (!yellow) {
-    yellowOn();
-  }
-}
-
-void onlyGreen() {
-  if (red) {
-    redOff();
-  }
-  if (yellow) {
-    yellowOff();
-  }
-  if (!green) {
-    greenOn();
   }
 }
 
@@ -401,6 +370,42 @@ void toggleGreen() {
   }
 }
 
+void onlyRed() {
+  if (yellow) {
+    yellowOff();
+  }
+  if (green) {
+    greenOff();
+  }
+  if (!red) {
+    redOn();
+  }
+}
+
+void onlyYellow() {
+  if (red) {
+    redOff();
+  }
+  if (green) {
+    greenOff();
+  }
+  if (!yellow) {
+    yellowOn();
+  }
+}
+
+void onlyGreen() {
+  if (red) {
+    redOff();
+  }
+  if (yellow) {
+    yellowOff();
+  }
+  if (!green) {
+    greenOn();
+  }
+}
+
 /* Either switches from red to green or green to red like a real traffic light. */
 void toggleRedGreenGreenRed() {
   if (red) {
@@ -548,6 +553,23 @@ void toggleRandom() {
       break;
     case 4:
       toggleGreen();
+      break;
+  }
+}
+
+/* Turns on only one random color */
+void randomOnlyOneOn() {
+  Serial.println("Random one on");
+  short randomNumber = getRandomPin();
+  switch (randomNumber) {
+    case 2:
+      onlyRed();
+      break;
+    case 3:
+      onlyYellow();
+      break;
+    case 4:
+      onlyGreen();
       break;
   }
 }
@@ -742,10 +764,6 @@ void randomBlinkMode() {
   }
 }
 
-void buzzerMode() {
-  /* TODO: Add functionality */
-}
-
 /* Activates a random mode. */
 void randomLightMode() {
   /* TODO: Improve this as it may change to other modes while current mode is not finished (e.g. in between blinking). */
@@ -879,6 +897,17 @@ void decreaseBlinkSpeed() {
   Serial.println(currentDelay);
 }
 
+/* Drinking game mode :) */
+void modeBuzzr(bool buttonPressed) {
+  if (buttonPressed) {
+    allOff();
+    waitTime(random(1500, 6501));
+  } else if (!oneIsOn()) {
+    randomOnlyOneOn();
+  }
+
+}
+
 /* Put init 'animation' here */
 void showStartSequence() {
   /* Start sequence */
@@ -895,8 +924,6 @@ void showStartSequence() {
 /* Returns random number 2, 3 or 4.  */
 short getRandomPin() {
   long randomNumber = random(2, 5);
-  Serial.println("random_nr");
-  Serial.println(randomNumber);
   return (short) randomNumber;
 }
 
@@ -1006,6 +1033,11 @@ short remoteCodeToMode(unsigned long remoteValue) {
     case 4278252045:
       /* Button 3 */
       return modeLightsRunningFromBottom;
+    case 4278225525:
+      /* Button 4 */
+      return modeRandomOnlyOne;
+    case 4278209205:
+      return modeBuzzer;
     case 4278201045:
       /* Button FAVOR */
       return modeBlinkRandom;
@@ -1034,6 +1066,15 @@ short remoteCodeToMode(unsigned long remoteValue) {
     case 4278229605:
       /* Button TV/R */
       return modeSpecialGotoNextMode;
+    case 16714740:
+      /* Sky Remote Ok Button */
+      return modeBuzzer;
+    case 16742790:
+      /* Sky remote Power */
+      return modeToggleAll;
+    case 16734630:
+      /* Sky remote Help */
+      return modeBlinkAll;
     default:
       /* Buttom long press / unhandled IR code */
       return 0;
@@ -1044,6 +1085,9 @@ short remoteCodeToMode(unsigned long remoteValue) {
 
 
 void launchMode(short mode, bool userPressedButton) {
+  if (userPressedButton) {
+    Serial.println("User pressed button");
+  }
   /* Only save number of last mode if  it was NOT a special mode! */
   bool saveCurrentModeNumber = false;
   bool currentModeIsSpecialMode = isSpecialMode(mode);
@@ -1196,6 +1240,14 @@ void launchMode(short mode, bool userPressedButton) {
     case modeBlinkRandom:
       /* TODO: Fix this mode */
       blinkRandom(0, currentDelay);
+      break;
+    case modeBuzzer:
+      modeBuzzr(userPressedButton);
+      break;
+    case modeRandomOnlyOne:
+      if (userPressedButton) {
+        randomOnlyOneOn();
+      }
       break;
     default:
       break;
