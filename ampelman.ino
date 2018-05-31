@@ -791,7 +791,10 @@ void randomLightMode() {
   Serial.println("Random light mode");
   /* First make sure everything is turned off */
   allOff();
+  /* TODO: Why isn't this really random?? */
   int randomNumberForMode = random(0, 12);
+  Serial.println("RandomMode:");
+  Serial.println(randomNumberForMode);
   int randomNumberForNumberofBlinks = getRandomNumberOfBlinks();
   long randomNumberForBlinkDelay = getRandomDelayBetweenBlinks();
   long randomNumberForDelay = getRandomWaitTime();
@@ -827,10 +830,12 @@ void randomLightMode() {
       blinkRandom(randomNumberForNumberofBlinks, randomNumberForBlinkDelay);
       break;
     case 10:
-      lightsRunningFromTop(0, currentDelay);
+    /* TODO: Improve this */
+      lightsRunningFromTop(100, currentDelay);
       break;
     case 11:
-      lightsRunningFromBottom(0, currentDelay);
+    /* TODO: Improve this */
+      lightsRunningFromBottom(100, currentDelay);
       break;
     default:
       /* Do nothing - only wait if required */
@@ -921,7 +926,7 @@ void decreaseBlinkSpeed() {
 void modeBuzzr(bool buttonPressed) {
   if (buttonPressed) {
     allOff();
-    waitTime(random(1500, 6501));
+    waitTime(random(1500, 3501));
   } else if (!oneIsOn()) {
     randomMultipleOn();
     //randomOnlyOneOn();
@@ -1221,10 +1226,10 @@ void launchMode(short mode, bool userPressedButton) {
       redToGreen();
       break;
     case modeLightsRunningFromTop:
-      lightsRunningFromTop(0, currentDelay);
+      lightsRunningFromTop(100, currentDelay);
       break;
     case modeLightsRunningFromBottom:
-      lightsRunningFromBottom(0, currentDelay);
+      lightsRunningFromBottom(100, currentDelay);
       break;
     case modeBlinkAll:
       blinkAllTicker(0, 1000);
@@ -1301,10 +1306,13 @@ void setup()
   green = true;
   allOff();
   showStartSequence();
+  delay(2000);
+  /* Set start-mode */
+  lastMode = modeRandom;
 }
 
 bool tickerIsRunning() {
-  /* Ticker will stay in RUNNING state although repeats are exceeded --> This function is a small wrapper to get the 'real' state of our ticker (getRepeats=0 --> infinite run --> Will return false here as we cannot wait for an infinite Ticker to finish ;) ). */
+  /* Ticker will stay in RUNNING state although repeats are exceeded --> This function is a small wrapper to get the 'real' state of our ticker (getRepeats=0 --> infinite run --> We return false here as we cannot wait for an infinite Ticker to finish ;) ). */
   return test2.getState() == RUNNING && (test2.getRepeats() == 0 || test2.getRepeatsCounter() < test2.getRepeats());
 }
 
